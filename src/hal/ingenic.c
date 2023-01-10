@@ -48,7 +48,7 @@ static int get_cpu_id() {
         return -1;
     if (soc_id >> 28 != 1)
         return -1;
-    switch ((soc_id >> 12) & 0xff) {
+    switch ((soc_id << 4) >> 0x10) { // T10/T20 have different calculation method
     case 5:
         switch ((uint8_t)cppsr) {
         case 0:
@@ -69,6 +69,8 @@ static int get_cpu_id() {
         default:
             return -1;
         }
+    }
+    switch ((soc_id >> 12) & 0xff) {
     case 0x30:
         if ((uint8_t)cppsr == 1) {
             switch (HIWORD(subsoctype)) {
@@ -152,15 +154,15 @@ static const char *ingenic_cpu_name() {
         return "T10";
     case 1:
     case 2:
-        return "T10Lite";
+        return "T10L";
     case 3:
         return "T20";
     case 4:
-        return "T20Lite";
+        return "T20L";
     case 5:
         return "T20X";
     case 6:
-        return "T30Lite";
+        return "T30L";
     case 7:
         return "T30N";
     case 8:
@@ -214,7 +216,8 @@ static unsigned long ingenic_media_mem() {
 }
 
 unsigned long ingenic_totalmem(unsigned long *media_mem) {
-    *media_mem = ingenic_media_mem();
+    *media_mem = (ingenic_media_mem() < 1024) ? ingenic_media_mem() * 1024
+                                              : ingenic_media_mem();
     return kernel_mem();
 }
 
