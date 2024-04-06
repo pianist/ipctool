@@ -143,11 +143,11 @@ static void sony_imx291_params(sensor_ctx_t *ctx, int fd,
     int adbit = READ(0x5) & 1 ? 12 : 10;
     ADD_PARAM_NUM("bitness", adbit);
 
-    ADD_PARAM("databus", sony_imx291_databus((READ(0x46) & 0xf0) >> 4));
+    ADD_PARAM("databus", sony_imx291_databus((READ(0x46) & 0xF0) >> 4));
 
     int frsel = (READ(9) & 3);
-    int hmax = READ(0x1d) << 8 | READ(0x1c);
-    ADD_PARAM_NUM("fps", sony_imx291_fps(frsel, hmax))
+    int hmax = READ(0x1D) << 8 | READ(0x1C);
+    ADD_PARAM_NUM("fps", sony_imx291_fps(frsel, hmax));
     ctx->j_params = j_inner;
 }
 #endif
@@ -157,17 +157,18 @@ static int detect_sony_sensor(sensor_ctx_t *ctx, int fd,
     if (i2c_change_addr(fd, i2c_addr) < 0)
         return false;
 
+    // HINT: 0x3057 also can be used for IMX335 (chip_id == 0x07)
+    // OR 0x3415 == 0x20 && 0x3418 == 0x27
     int chip_id = READ(0x57);
     if (chip_id == 0x06) {
         sprintf(ctx->sensor_id, "IMX347");
         return true;
     }
-    // 0x3057 also can be used for IMX335 (chip_id == 0x07)
 
-    if (READ(0x41c) == 0x47) {
-        int ret302e = READ(0x02e);
-        int ret302f = READ(0x02f);
-        if (ret302e == 0x18 && ret302f == 0xf) {
+    if (READ(0x41C) == 0x47) {
+        int r302E = READ(0x2E);
+        int r302F = READ(0x2F);
+        if (r302E == 0x18 && r302F == 0xF) {
             sprintf(ctx->sensor_id, "IMX334");
             return true;
         }
@@ -175,12 +176,13 @@ static int detect_sony_sensor(sensor_ctx_t *ctx, int fd,
 
     // from IMX335 datasheet, p.40
     // 316Ah - 2-6 bits are 1, 7 bit is 0
-    int ret16a = READ(0x16A);
+    int r316A = READ(0x16A);
     // early break
-    if (ret16a == -1)
+    if (r316A == -1)
         return false;
 
-    if (ret16a > 0 && ((ret16a & 0xfc) == 0x7c)) {
+    // HINT: possible check 0x316A == 0x7C && 0x3078 == 0x1
+    if (r316A > 0 && ((r316A & 0xFC) == 0x7C)) {
         sprintf(ctx->sensor_id, "IMX335");
         return true;
     }
@@ -188,7 +190,7 @@ static int detect_sony_sensor(sensor_ctx_t *ctx, int fd,
     // Fixed to "40h"
     if (READ(0x13) == 0x40) {
 
-        if (READ(0x4F) == 0x07) {
+        if (READ(0x4F) == 0x7) {
             sprintf(ctx->sensor_id, "IMX323");
         } else {
             sprintf(ctx->sensor_id, "IMX322");
@@ -198,41 +200,43 @@ static int detect_sony_sensor(sensor_ctx_t *ctx, int fd,
 
     // from IMX415 datasheet, p.46
     // 3B00h, Set to "2Eh", default value after reset is 28h
-    int ret3b00 = READ(0xB00);
-    if (ret3b00 == 0x2e || ret3b00 == 0x28) {
+    // HINT: possible check 0x300B == 0xA0 && 0x30C0 == 0x20
+    int r3B00 = READ(0xB00);
+    if (r3B00 == 0x2E || r3B00 == 0x28) {
         sprintf(ctx->sensor_id, "IMX415");
         return true;
     }
 
-    // Possible check: 3015 == 0x3c
-    int ret33b4 = READ(0x3b4);
-    if (ret33b4 == 0x96 || ret33b4 == 0xfe) {
+    // HINT: possible check 0x3015 == 0x3c
+    int r33B4 = READ(0x3B4);
+    if (r33B4 == 0x96 || r33B4 == 0xFE) {
         sprintf(ctx->sensor_id, "IMX178");
         return true;
     }
 
-    if (READ(0x120) == 0x80 && READ(0x129) == 0x0d) {
+    if (READ(0x120) == 0x80 && READ(0x129) == 0xD) {
         sprintf(ctx->sensor_id, "IMX274");
         return true;
     }
 
-    // Possible check: 0x303a = 0xc9
-    if (READ(0x015) == 0x3c) {
+    // HINT: possible check 0x303A == 0xC9
+    // OR 0x3012 == 0x50 && 0x3110 == 0XE
+    if (READ(0x15) == 0x3C) {
         sprintf(ctx->sensor_id, "IMX185");
         return true;
     }
 
-    if (READ(0x5b8) == 0xfa) {
+    if (READ(0x5B8) == 0xFA) {
         sprintf(ctx->sensor_id, "IMX294");
         return true;
     }
 
-    if (READ(0x1c) == 0x8b) {
+    if (READ(0x1C) == 0x8B) {
         sprintf(ctx->sensor_id, "IMX226");
         return true;
     }
 
-    if (READ(0xce) == 0x16) {
+    if (READ(0xCE) == 0x16) {
         sprintf(ctx->sensor_id, "IMX122");
         return true;
     }
@@ -243,19 +247,20 @@ static int detect_sony_sensor(sensor_ctx_t *ctx, int fd,
         return true;
     }
 
-    int ret1dc = READ(0x1DC);
-    if (ret1dc != 0xff) {
-        switch (ret1dc & 6) {
+    int r31DC = READ(0x1DC);
+    if (r31DC != 0xFF) {
+        switch (r31DC & 6) {
         case 4:
             sprintf(ctx->sensor_id, "IMX307");
             return true;
         case 6:
+            // HINT: possible check 0x3004 == 0x10 && 0x3008 != 0xA0
             sprintf(ctx->sensor_id, "IMX327");
             return true;
         default: {
-            if (READ(0x1e) == 0xb2 && READ(0x1f) == 0x1) {
-                int ret9c = READ(0x9c);
-                switch (ret9c) {
+            if (READ(0x1E) == 0xB2 && READ(0x1F) == 0x1) {
+                int r309C = READ(0x9C);
+                switch (r309C) {
                 case 0x20:
                 case 0x22:
                     sprintf(ctx->sensor_id, "IMX291");
@@ -264,7 +269,7 @@ static int detect_sony_sensor(sensor_ctx_t *ctx, int fd,
                     sprintf(ctx->sensor_id, "IMX290");
                     break;
                 default:
-                    SENSOR_ERR("Sony29x", ret9c);
+                    SENSOR_ERR("Sony29x", r309C);
                     return false;
                 }
 #ifndef STANDALONE_LIBRARY
@@ -286,16 +291,18 @@ static int detect_sony_sensor(sensor_ctx_t *ctx, int fd,
     }
 
     if (READ(0x4) == 0x10) {
-        if (READ(0xc) == 0 && READ(0xe) == 0x1) {
-            int val_0xd = READ(0xd);
-	    int val_0x10 = READ(0x10);
+        if (READ(0xC) == 0 && READ(0xE) == 0x1) {
+            int r300D = READ(0xD);
+            int r3010 = READ(0x10);
 
-            if (val_0xd == 0x20 && val_0x10 == 0x39 && READ(0x6) == 0 && READ(0xf) == 0x1 && READ(0x12) == 0x50) {
+            if (r300D == 0x20 && r3010 == 0x39 && READ(0x6) == 0 &&
+                READ(0xF) == 0x1 && READ(0x12) == 0x50) {
                 sprintf(ctx->sensor_id, "IMX138");
                 return true;
             }
 
-            if (val_0xd == 0 && val_0x10 == 0x1 && READ(0x11) == 0 && READ(0x1e) == 0x1 && READ(0x1f) == 0) {
+            if (r300D == 0 && r3010 == 0x1 && READ(0x11) == 0 &&
+                READ(0x1E) == 0x1 && READ(0x1F) == 0) {
                 if (READ(0x338) != 0) {
                     sprintf(ctx->sensor_id, "IMX385");
                     return true;
@@ -306,8 +313,37 @@ static int detect_sony_sensor(sensor_ctx_t *ctx, int fd,
             }
         }
 
-        if (READ(0x9e) == 0x71) {
+        if (READ(0x9E) == 0x71) {
             sprintf(ctx->sensor_id, "IMX123");
+            return true;
+        }
+    }
+
+    int r30A4 = READ(0xA4);
+    switch (r30A4 & 0xF0) {
+    case 0xA0:
+        if (READ(0xC44) == 6) {
+            sprintf(ctx->sensor_id, "IMX664");
+            return true;
+        }
+
+        // TODO: not tested yet
+        if (READ(0xC40) == 5) {
+            sprintf(ctx->sensor_id, "IMX662");
+            return true;
+        }
+
+        // TODO: not tested yet
+        if (READ(0xC7C) == 0x16) {
+            sprintf(ctx->sensor_id, "IMX675");
+            return true;
+        }
+        break;
+
+    case 0x20:
+        // TODO: not tested yet
+        if (READ(0x152) == 0x1E) {
+            sprintf(ctx->sensor_id, "IMX482");
             return true;
         }
     }
@@ -347,6 +383,15 @@ static int detect_soi_sensor(sensor_ctx_t *ctx, int fd,
     case 0x8:
         if (ver == 0x43) {
             sprintf(ctx->sensor_id, "JXQ03P");
+            return true;
+        } else if (ver == 0x41) {
+            sprintf(ctx->sensor_id, "JXF37P");
+            return true;
+        } else if (ver == 0x42) {
+            sprintf(ctx->sensor_id, "JXF53");
+            return true;
+        } else if (ver == 0x44) {
+            sprintf(ctx->sensor_id, "JXF38P");
             return true;
         }
         // fall through
@@ -406,9 +451,6 @@ static int detect_smartsens_sensor(sensor_ctx_t *ctx, int fd,
     if (i2c_change_addr(fd, i2c_addr) < 0)
         return false;
 
-    // xm_i2c_write(0x103, 1); // reset all registers (2 times and then
-    // delay) msDelay(100);
-
     // could be 0x3005 for SC1035, SC1145, SC1135
     int high = i2c_read_register(fd, i2c_addr, 0x3107, 2, 1);
     // early break
@@ -423,29 +465,29 @@ static int detect_smartsens_sensor(sensor_ctx_t *ctx, int fd,
 
     int res = high << 8 | lower;
     switch (res) {
+    case 0x0010:
+        // aka fake Aptina AR0130
+        res = 0x1035;
+        break;
+    case 0x1045:
+        break;
+    case 0x1145:
+        break;
     case 0x1235:
-        // Untested
         break;
-    case 0x1245:
-        // Untested
-        {
-            int sw = i2c_read_register(fd, i2c_addr, 0x3020, 2, 1);
-            sprintf(ctx->sensor_id, "SC2145H_%c", sw == 2 ? 'A' : 'B');
-            return true;
-        }
-    case 0x2032:
-        strcpy(ctx->sensor_id, "SC2035");
+    case 0x1245: {
+        int sw = i2c_read_register(fd, i2c_addr, 0x3020, 2, 1);
+        sprintf(ctx->sensor_id, "SC2145H_%c", sw == 2 ? 'A' : 'B');
         return true;
-    case 0x2135:
-        break;
-    case 0x2145:
-        // Untested
+    }
+    case 0x2032:
+        res = 0x2035;
         break;
     case 0x2045:
         break;
-    case 0x0010:
-        // (Untested) aka fake Aptina AR0130
-        res = 0x1035;
+    case 0x2135:
+        break;
+    case 0x2145:
         break;
     case 0x2232: {
         if (i2c_read_register(fd, i2c_addr, 0x3109, 2, 1) == 0x20)
@@ -461,13 +503,12 @@ static int detect_smartsens_sensor(sensor_ctx_t *ctx, int fd,
         strcpy(ctx->sensor_id, "SC2315E");
         return true;
     case 0x2245:
-        // Untested
         res = 0x1145;
         break;
-    case 0x1045:
-        break;
-    case 0x1145:
-        break;
+    case 0x2300:
+        // XM530
+        strcpy(ctx->sensor_id, "SC307P");
+        return true;
     case 0x2310:
         break;
     case 0x2311:
@@ -475,49 +516,80 @@ static int detect_smartsens_sensor(sensor_ctx_t *ctx, int fd,
         strcpy(ctx->sensor_id, "SC2315");
         return true;
     case 0x2330:
-        // Untested
         strcpy(ctx->sensor_id, "SC307H");
     case 0x3035:
         break;
     case 0x3235:
         res = 0x4236;
         break;
+    case 0x4210:
+        break;
+    case 0x4235:
+        res = 0x4238;
+        break;
     case 0x5235:
-        // Untested
         break;
     case 0x5300:
         strcpy(ctx->sensor_id, "SC335E");
         return true;
+    case 0xbd2f:
+        strcpy(ctx->sensor_id, "SC450AI");
+        return true;
+    case 0xca13:
+        // XM530
+        strcpy(ctx->sensor_id, "SC1335T");
+        return true;
+    case 0xca18:
+        // XM530
+        strcpy(ctx->sensor_id, "SC1330T");
+        return true;
     case 0xcb07:
+        // aka SC307C
         strcpy(ctx->sensor_id, "SC2232H");
         return true;
+    case 0xcb08:
+        res = 0x2320;
+        break;
     case 0xcb10:
-        strcpy(ctx->sensor_id, "SC2239");
-        return true;
+        res = 0x2239;
+        break;
     case 0xcb14:
         res = 0x2335;
         break;
     case 0xcb17:
-        res = 0x2232;
-        break;
+        if (strstr(getchipvendor(), VENDOR_INGENIC))
+            strcpy(ctx->sensor_id, "SC2332");
+        else
+            strcpy(ctx->sensor_id, "SC2232");
+        return true;
     case 0xcb1c:
-        // XM
-        strcpy(ctx->sensor_id, "SC307H");
+        if (strstr(getchipvendor(), VENDOR_SSTAR))
+            strcpy(ctx->sensor_id, "SC200AI");
+        else
+            strcpy(ctx->sensor_id, "SC337H");
         return true;
     case 0xcc05:
         // AKA AUGE
-        strcpy(ctx->sensor_id, "SC3235");
-        return true;
+        res = 0x3235;
+        break;
     case 0xcc1a:
-        strcpy(ctx->sensor_id, "SC3335");
+        res = 0x3335;
+        break;
+    case 0xcc40:
+        strcpy(ctx->sensor_id, "SC301IoT");
         return true;
-    case 0x4210:
-        strcpy(ctx->sensor_id, "SC4210");
-        return true;
+    case 0xcc41:
+        // XM530
+        res = 0x3338;
+        break;
     case 0xcd01:
         // XM
         strcpy(ctx->sensor_id, "SC4335P");
         return true;
+    case 0xcb3a:
+        // XM530
+        res = 0x2336;
+        break;
     case 0xcb3e:
         // XM
         strcpy(ctx->sensor_id, "SC223A");
@@ -528,11 +600,24 @@ static int detect_smartsens_sensor(sensor_ctx_t *ctx, int fd,
         return true;
     case 0xce1a:
         // XM
-        strcpy(ctx->sensor_id, "SC5332");
-        return true;
+        res = 0x5332;
+        break;
     case 0xce1f:
         // XM
         strcpy(ctx->sensor_id, "SC501AI");
+        return true;
+    case 0xda23:
+        // XM 530
+        res = 0x1345;
+        return true;
+    case 0xdc42:
+        res = 0x4336;
+        return true;
+    case 0xbd1e:
+        strcpy(ctx->sensor_id, "SC850SL");
+        return true;
+    case 0x9b3a:
+        strcpy(ctx->sensor_id, "SC2336P");
         return true;
     case 0:
     case 0xffff:
@@ -573,6 +658,9 @@ static int detect_omni_sensor(sensor_ctx_t *ctx, int fd,
     case 0x4688:
         sprintf(ctx->sensor_id, "OV4689");
         return true;
+    case 0x5303:
+        sprintf(ctx->sensor_id, "SP4329");
+        return true;
     case 0x5305:
         sprintf(ctx->sensor_id, "OS05A");
         return true;
@@ -606,6 +694,9 @@ static int detect_omni_sensor(sensor_ctx_t *ctx, int fd,
 
     // model mapping
     switch (res) {
+    case 0x2770:
+        res = 0x2718;
+        break;
     case 0x4688:
         res = 0x4689;
         break;
@@ -654,6 +745,7 @@ static int detect_galaxycore_sensor(sensor_ctx_t *ctx, int fd,
     switch (res) {
     case 0x2053:
     case 0x2083:
+    case 0x4023:
     case 0x4653:
         sprintf(ctx->sensor_id, "GC%04x", res);
         return true;
@@ -672,12 +764,21 @@ static int detect_galaxycore_sensor(sensor_ctx_t *ctx, int fd,
         return false;
 
     switch (res) {
+    case 0x1004:
+    case 0x1024:
     case 0x1034:
+    case 0x1054:
     case 0x2023:
+    case 0x2033:
     case 0x2053:
     case 0x2063:
     case 0x2083:
+    case 0x2093:
+    case 0x3003:
+    case 0x4023:
     case 0x4653:
+    case 0x46c3:
+    case 0x5035:
         sprintf(ctx->sensor_id, "GC%04x", res);
         return true;
     case 0xffff:
@@ -694,6 +795,11 @@ static int detect_superpix_sensor(sensor_ctx_t *ctx, int fd,
     if (i2c_change_addr(fd, i2c_addr) < 0)
         return false;
 
+    // Set page 0
+    int page = i2c_read_register(fd, i2c_addr, 0xFD, 1, 1);
+    if (page > 0)
+        i2c_write_register(fd, i2c_addr, 0xFD, 1, 0x00, 2);
+
     int prod_msb = i2c_read_register(fd, i2c_addr, 0x02, 1, 1);
     if (prod_msb == -1)
         return false;
@@ -703,7 +809,6 @@ static int detect_superpix_sensor(sensor_ctx_t *ctx, int fd,
         return false;
 
     int res = prod_msb << 8 | prod_lsb;
-
     if (!res)
         return false;
 
@@ -711,8 +816,16 @@ static int detect_superpix_sensor(sensor_ctx_t *ctx, int fd,
     // Omnivision-SuperPix OV2735
     case 0x2735:
         sprintf(ctx->sensor_id, "OV%04x", res);
-        return res;
-        break;
+        return true;
+    case 0x4308:
+        sprintf(ctx->sensor_id, "OS04B10");
+        return true;
+    case 0x5303:
+        sprintf(ctx->sensor_id, "OS03B10");
+        return true;
+    case 0x5602:
+        sprintf(ctx->sensor_id, "OS02G10");
+        return true;
     }
 
     prod_msb = i2c_read_register(fd, i2c_addr, 0xfa, 1, 1);
@@ -723,8 +836,8 @@ static int detect_superpix_sensor(sensor_ctx_t *ctx, int fd,
     prod_lsb = i2c_read_register(fd, i2c_addr, 0xfb, 1, 1);
     if (prod_lsb == -1)
         return false;
-    res = prod_msb << 8 | prod_lsb;
 
+    res = prod_msb << 8 | prod_lsb;
     if (!res)
         return false;
 
@@ -745,6 +858,29 @@ static int detect_superpix_sensor(sensor_ctx_t *ctx, int fd,
     if (res) {
         sprintf(ctx->sensor_id, "SP%04x", res);
     }
+
+    return res;
+}
+
+static int detect_techpoint_adc(sensor_ctx_t *ctx, int fd,
+                                unsigned char i2c_addr) {
+    if (i2c_change_addr(fd, i2c_addr) < 0)
+        return false;
+
+    int prod_msb = i2c_read_register(fd, i2c_addr, 0xfe, 1, 1);
+    if (prod_msb == -1)
+        return false;
+
+    int prod_lsb = i2c_read_register(fd, i2c_addr, 0xff, 1, 1);
+    if (prod_lsb == -1)
+        return false;
+
+    int res = prod_msb << 8 | prod_lsb;
+    if (!res)
+        return false;
+    else
+        sprintf(ctx->sensor_id, "TP%04x", res);
+
     return res;
 }
 
@@ -812,6 +948,10 @@ static bool get_sensor_id_i2c(sensor_ctx_t *ctx) {
         strcpy(ctx->vendor, "SuperPix");
         ctx->reg_width = 1;
         detected = true;
+    } else if (detect_possible_sensors(ctx, fd, detect_techpoint_adc,
+                                       SENSOR_TECHPOINT)) {
+        strcpy(ctx->vendor, "TechPoint");
+        detected = true;
     }
 exit:
     close_sensor_fd(fd);
@@ -870,14 +1010,13 @@ cJSON *detect_sensors() {
     sensor_ctx_t ctx;
     memset(&ctx, 0, sizeof(ctx));
 
-    cJSON *fake_root = cJSON_CreateObject();
-    cJSON *j_sensors = cJSON_AddArrayToObject(fake_root, "sensors");
+    cJSON *j_sensors = cJSON_CreateArray();
     ctx.j_sensor = cJSON_CreateObject();
     cJSON *j_inner = ctx.j_sensor;
     cJSON_AddItemToArray(j_sensors, j_inner);
 
     if (!getsensorid(&ctx)) {
-        cJSON_Delete(fake_root);
+        cJSON_Delete(j_sensors);
         return NULL;
     }
 
@@ -896,7 +1035,7 @@ cJSON *detect_sensors() {
         hisi_vi_information(&ctx);
     }
 
-    return fake_root;
+    return j_sensors;
 }
 
 #endif

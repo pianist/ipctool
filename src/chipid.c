@@ -14,23 +14,19 @@
 #include "hal/common.h"
 #include "tools.h"
 
-#define VENDOR_HISI "HiSilicon"
-#define VENDOR_GOKE "Goke"
-
 int chip_generation;
 char chip_name[128];
-static char chip_manufacturer[128];
 char nor_chip[128];
+static char chip_manufacturer[128];
 
 static long get_uart0_address() {
     char buf[256];
 
-    bool res = line_from_file("/proc/iomem",
-                              "^([0-9a-f]+)-[0-9a-f]+ : .*uart[@:][0-9]", buf,
-                              sizeof(buf));
-    if (!res) {
+    if (!line_from_file("/proc/iomem", "^(\\w+)-.+:.+uart",
+                buf, sizeof(buf))) {
         return -1;
     }
+
     return strtol(buf, NULL, 16);
 }
 
@@ -43,17 +39,19 @@ typedef struct {
 
 static const manufacturers_t manufacturers[] = {
 #if defined(mips) || defined(__mips__) || defined(__mips)
-    {"isvp", ingenic_detect_cpu, "Ingenic", setup_hal_ingenic},
+    {"isvp", ingenic_detect_cpu, VENDOR_INGENIC, setup_hal_ingenic},
+    {"ingenic", ingenic_detect_cpu, VENDOR_INGENIC, setup_hal_ingenic},
 #endif
 #ifdef __arm__
-    {"SStar", sstar_detect_cpu, NULL, sstar_setup_hal},
+    {"SStar", sstar_detect_cpu, VENDOR_SSTAR, sstar_setup_hal},
     {"MStar", mstar_detect_cpu, NULL, sstar_setup_hal},
     {"Novatek", novatek_detect_cpu, NULL, novatek_setup_hal},
-    {"Grain-Media", gm_detect_cpu, NULL, gm_setup_hal},
-    {"FH", fh_detect_cpu, "Fullhan", fh_setup_hal},
-    {NULL /* Generic */, rockchip_detect_cpu, "Rockchip", rockchip_setup_hal},
+    {"Grain", gm_detect_cpu, VENDOR_GM, gm_setup_hal},
+    {"FH", fh_detect_cpu, VENDOR_FH, fh_setup_hal},
+    {NULL /* Generic */, rockchip_detect_cpu, VENDOR_ROCKCHIP, rockchip_setup_hal},
     {"Xilinx", xilinx_detect_cpu, NULL, xilinx_setup_hal},
-    {"BCM", bcm_detect_cpu, "Broadcom", bcm_setup_hal}
+    {"BCM", bcm_detect_cpu, VENDOR_BCM, bcm_setup_hal},
+    {NULL, allwinner_detect_cpu, VENDOR_ALLWINNER, allwinner_setup_hal}
 #endif
 #if defined(__aarch64__) || defined(_M_ARM64)
     {NULL, tegra_detect_cpu, "Nvidia", tegra_setup_hal},
@@ -64,11 +62,15 @@ static bool generic_detect_cpu() {
     char buf[256] = "unknown";
 
     strcpy(chip_name, "unknown");
-    bool res = line_from_file("/proc/cpuinfo", "Hardware\\t+: ([a-zA-Z-]+)",
-                              buf, sizeof(buf));
+    bool res = line_from_file("/proc/cpuinfo", "Hardware.+:.(\\w+)",
+                buf, sizeof(buf));
     if (!res) {
-        res = line_from_file("/proc/cpuinfo", "vendor_id\t+: (.+)", buf,
-                             sizeof(buf));
+        res = line_from_file("/proc/cpuinfo", "vendor_id.+:.(\\w+)",
+                buf, sizeof(buf));
+    }
+    if (!res) {
+        res = line_from_file("/proc/cpuinfo", "machine.+:.(\\w+)",
+                buf, sizeof(buf));
     }
     strcpy(chip_manufacturer, buf);
 
@@ -175,6 +177,32 @@ const char *getchipfamily() {
             return "gk7205v200";
         else
             return "hi3516ev200";
+    case INFINITY3:
+        return "infinity3";
+    case INFINITY5:
+        return "infinity5";
+    case INFINITY6:
+        return "infinity6";
+    case INFINITY6B:
+        return "infinity6b0";
+    case INFINITY6C:
+        return "infinity6c";        
+    case INFINITY6E:
+        return "infinity6e";
+    case T10:
+        return "t10";
+    case T20:
+        return "t20";
+    case T21:
+        return "t21";
+    case T30:
+        return "t30";
+    case T31:
+        return "t31";
+    case T40:
+        return "t40";
+    case T41:
+        return "t41";
     default:
         return chip_name;
     }
@@ -187,15 +215,13 @@ const char *getchipvendor() {
 
 #ifndef STANDALONE_LIBRARY
 cJSON *detect_chip() {
-    cJSON *fake_root = cJSON_CreateObject();
     cJSON *j_inner = cJSON_CreateObject();
-    cJSON_AddItemToObject(fake_root, "chip", j_inner);
 
     ADD_PARAM("vendor", chip_manufacturer);
     ADD_PARAM("model", chip_name);
     if (hal_chip_properties)
         hal_chip_properties(j_inner);
 
-    return fake_root;
+    return j_inner;
 }
 #endif

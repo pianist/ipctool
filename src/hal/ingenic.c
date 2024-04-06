@@ -5,6 +5,7 @@
 
 #include <unistd.h>
 
+#include "chipid.h"
 #include "hal/common.h"
 #include "tools.h"
 
@@ -12,7 +13,7 @@ static unsigned char sony_addrs[] = {0x34, 0};
 static unsigned char ssens_addrs[] = {0x60, 0};
 static unsigned char omni_addrs[] = {0x6c, 0};
 static unsigned char onsemi_addrs[] = {0x20, 0};
-static unsigned char gc_addrs[] = {0x6e, 0x52, 0};
+static unsigned char gc_addrs[] = {0x6e, 0x52, 0x42, 0};
 static unsigned char soi_addrs[] = {0x60, 0x80, 0};
 
 static sensor_addr_t ingenic_possible_i2c_addrs[] = {
@@ -36,7 +37,7 @@ typedef unsigned short uint16;
 
 static int get_cpu_id() {
     uint32_t soc_id = 0, cppsr = 0;
-    uint32_t subsoctype = 0, subremark = 0;
+    uint32_t subsoctype = 0, subremark = 0, subsoctypet40 = 0, subsoctypet41 = 0;
 
     if (!mem_reg(0x1300002C, &soc_id, OP_READ))
         return -1;
@@ -48,8 +49,10 @@ static int get_cpu_id() {
         return -1;
     if (soc_id >> 28 != 1)
         return -1;
-    switch ((soc_id << 4) >> 0x10) { // T10/T20 have different calculation method
+    switch ((soc_id << 4) >>
+            0x10) { // T10/T20 have different calculation method
     case 5:
+        chip_generation = 0x10;
         switch ((uint8_t)cppsr) {
         case 0:
             return 1;
@@ -61,6 +64,7 @@ static int get_cpu_id() {
             return -1;
         }
     case 0x2000:
+        chip_generation = 0x20;
         switch ((uint8_t)cppsr) {
         case 1:
             return 3;
@@ -72,6 +76,7 @@ static int get_cpu_id() {
     }
     switch ((soc_id >> 12) & 0xff) {
     case 0x30:
+        chip_generation = 0x30;
         if ((uint8_t)cppsr == 1) {
             switch (HIWORD(subsoctype)) {
             case 0x1111:
@@ -93,21 +98,23 @@ static int get_cpu_id() {
             return -1;
         }
     case 0x21:
+        chip_generation = 0x21;
         if ((uint8_t)cppsr == 1) {
-                if (HIWORD(subsoctype) != 0x3333) {
-                    if (HIWORD(subsoctype) != 0x1111) {
-                        if (HIWORD(subsoctype) == 0x5555)
-                            return 14;
-                        return 13;
-                    }
-                    return 12;
+            if (HIWORD(subsoctype) != 0x3333) {
+                if (HIWORD(subsoctype) != 0x1111) {
+                    if (HIWORD(subsoctype) == 0x5555)
+                        return 14;
+                    return 13;
                 }
-                return 11;
+                return 12;
+            }
+            return 11;
         } else if ((uint8_t)cppsr != 0x10) {
             return -1;
         }
         return 11;
     case 0x31:
+        chip_generation = 0x31;
         if ((uint8_t)cppsr == 1) {
             if (BYTE2(subremark)) {
                 if (BYTE2(subremark) != (uint8_t)cppsr) {
@@ -123,26 +130,73 @@ static int get_cpu_id() {
                 }
                 return 16;
             } else {
-                if (HIWORD(subsoctype) != 0x3333) {
-                    if (HIWORD(subsoctype) != 0x1111) {
-                        if (HIWORD(subsoctype) != 0x2222) {
-                            if (HIWORD(subsoctype) != 0x4444) {
-                                if (HIWORD(subsoctype) == 0x5555)
-                                    return 19;
-                                return 20;
-                            }
-                            return 18;
-                        }
-                        return 17;
-                    }
+                switch (HIWORD(subsoctype)) {
+                case 0x1111:
+                    return 16;
+                case 0x2222:
+                    return 17;
+                case 0x3333:
+                    return 15;
+                case 0x4444:
+                    return 18;
+                case 0x5555:
+                    return 20;
+                case 0x6666:
+                    return 23;
+                case 0xcccc:
+                    return 19;
+                case 0xdddd:
+                    return 21;
+                case 0xeeee:
+                    return 22;
+                default:
                     return 16;
                 }
-                return 15;
             }
         } else if ((uint8_t)cppsr != 0x10) {
             return -1;
         }
         return 15;
+    case 0x40:
+        chip_generation = 0x40;
+        if (!mem_reg(0x13540250, &subsoctypet40, OP_READ))
+            return -1;
+        switch (HIWORD(subsoctypet40)) {
+        case 0x1111:
+            return 24;
+        case 0x8888:
+            return 25;
+        case 0x7777:
+            return 26;
+        case 0x4444:
+            return 27;
+        default:
+            return -1;
+        }
+    case 0x41:
+        chip_generation = 0x41;
+        if (!mem_reg(0x13540250, &subsoctypet41, OP_READ))
+            return -1;
+        switch (HIWORD(subsoctypet41)) {
+        case 0x3333:
+            return 28;
+        case 0x5555:
+            return 29;
+        case 0x8888:
+            return 30;
+        case 0x9999:
+            return 31;
+        case 0x1111:
+            return 32;
+        case 0x7777:
+            return 33;
+        case 0xAAAA:
+            return 34;
+        case 0x6666:
+            return 35;
+        default:
+            return -1;
+        }
     default:
         return -1;
     }
@@ -188,9 +242,39 @@ static const char *ingenic_cpu_name() {
     case 18:
         return "T31A";
     case 19:
-        return "T31ZL";
+        return "T31AL";
     case 20:
+        return "T31ZL";
+    case 21:
+        return "T31ZC";
+    case 22:
+        return "T31LC";
+    case 23:
         return "T31ZX";
+    case 24:
+        return "T40N";
+    case 25:
+        return "T40NN";
+    case 26:
+        return "T40XP";
+    case 27:
+        return "T40A";
+    case 28:
+        return "T41L";
+    case 29:
+        return "T41ZL";
+    case 30:
+        return "T41LC";
+    case 31:
+        return "T41LQ";
+    case 32:
+        return "T41N";
+    case 33:
+        return "T41ZN";
+    case 34:
+        return "T41NQ";
+    case 35:
+        return "T41X";
     }
     return "unknown";
 }
@@ -231,11 +315,43 @@ float ingenic_get_temp() {
     return ret;
 }
 
+static int ingenic_open_i2c_fd() {
+    int adapter_nr = 0;
+    if (!strncmp(chip_name, "T40", 3))
+        adapter_nr = 1;
+    char adapter_name[FILENAME_MAX];
+
+    snprintf(adapter_name, sizeof(adapter_name), "/dev/i2c-%d", adapter_nr);
+
+    return universal_open_sensor_fd(adapter_name);
+}
+
+static void ingenic_enable_sensor_clock() {
+    FILE *f;
+    char buf[16];
+
+    if (line_from_file("/proc/jz/clock/cgu_cim/enable", "(.+)", buf,
+                       sizeof(buf))) {
+        if (!strcmp(buf, "disabled")) {
+            f = fopen("/proc/jz/clock/cgu_cim/enable", "w");
+            fprintf(f, "%s", "1");
+            uint32_t direct;
+            mem_reg(0x10010030, &direct, OP_READ);
+            direct &= ~(1 << 18);
+            mem_reg(0x10010030, &direct, OP_WRITE);
+            mem_reg(0x10010040, &direct, OP_READ);
+            direct |= 1 << 18;
+            mem_reg(0x10010040, &direct, OP_WRITE);
+            fclose(f);
+        }
+    }
+}
+
 void setup_hal_ingenic() {
     disable_printk();
+    ingenic_enable_sensor_clock();
     possible_i2c_addrs = ingenic_possible_i2c_addrs;
-    if (!access("/sys/class/thermal/thermal_zone0/temp", R_OK))
-        hal_temperature = ingenic_get_temp;
+    open_i2c_sensor_fd = ingenic_open_i2c_fd;
 #ifndef STANDALONE_LIBRARY
     hal_totalmem = ingenic_totalmem;
 #endif

@@ -370,7 +370,7 @@ static void ev300_enum_lanes(cJSON *j_inner, size_t lanes) {
 static void lvds_code_set(cJSON *j_inner, const char *param,
                           lvds_bit_endian_t val) {
     if (val == LVDS_ENDIAN_LITTLE)
-        ADD_PARAM(param, "LVDS_ENDIAN_LITTLE")
+        ADD_PARAM(param, "LVDS_ENDIAN_LITTLE");
     else
         ADD_PARAM(param, "LVDS_ENDIAN_BIG");
 }
@@ -522,7 +522,7 @@ static void hisi_cv300_sensor_data(cJSON *j_root) {
                 ADD_PARAM("raw-data-type", raw);
         }
         if (lvds0_ctrl.lvds_sync_mode == LVDS_SYNC_MODE_SOF)
-            ADD_PARAM("sync-mode", "LVDS_SYNC_MODE_SOF")
+            ADD_PARAM("sync-mode", "LVDS_SYNC_MODE_SOF");
         else
             ADD_PARAM("sync-mode", "LVDS_SYNC_MODE_SAV");
 
@@ -686,6 +686,10 @@ static void hisi_ev300_sensor_clock(cJSON *j_inner) {
 }
 
 bool hisi_ev300_get_die_id(char *buf, ssize_t len) {
+    if (chip_generation != HISI_V4) {
+        return false;
+    }
+
     uint32_t base_id_addr = 0x12020400;
     char *ptr = buf;
     for (uint32_t id_addr = base_id_addr + 5 * 4; id_addr >= base_id_addr;
@@ -922,10 +926,8 @@ struct PT_OFFSET {
 // PT_UNIFY_TIMING_CFG
 
 void hisi_chip_properties(cJSON *j_inner) {
-    if (chip_generation == HISI_V4) {
-        char buf[1024];
-        if (hisi_ev300_get_die_id(buf, sizeof buf)) {
-            ADD_PARAM("id", buf);
-        }
+    char buf[1024];
+    if (hisi_ev300_get_die_id(buf, sizeof buf)) {
+        ADD_PARAM("id", buf);
     }
 }

@@ -25,14 +25,16 @@ static unsigned char soi_addrs[] = {0x80, 0x60, 0};
 static unsigned char onsemi_addrs[] = {0x20, 0x30, 0};
 static unsigned char ssens_addrs[] = {0x60, 0};
 static unsigned char omni_addrs[] = {0x60, 0x6c, 0x42, 0};
-static unsigned char gc_addrs[] = {0x6e, 0x52, 0x42, 0};
+static unsigned char gc_addrs[] = {0x6e, 0x52, 0x42, 0x78, 0};
 static unsigned char superpix_addrs[] = {0x79, 0};
+static unsigned char tp_addrs[] = {0x88, 0};
 
 static sensor_addr_t my_possible_i2c_addrs[] = {
     {SENSOR_SONY, sony_addrs},         {SENSOR_SOI, soi_addrs},
     {SENSOR_ONSEMI, onsemi_addrs},     {SENSOR_SMARTSENS, ssens_addrs},
     {SENSOR_OMNIVISION, omni_addrs},   {SENSOR_GALAXYCORE, gc_addrs},
-    {SENSOR_SUPERPIX, superpix_addrs}, {0, NULL}};
+    {SENSOR_SUPERPIX, superpix_addrs}, {SENSOR_TECHPOINT, tp_addrs},
+    {0, NULL}};
 
 static float hisi_get_temp();
 
@@ -476,21 +478,30 @@ void setup_hal_hisi() {
 
 static uint32_t hisi_reg_temp(uint32_t read_addr, int temp_bitness,
                               uint32_t prep_addr, uint32_t prep_val) {
-    uint32_t val;
+    uint32_t readed;
 
-    if (mem_reg(prep_addr, &val, OP_READ)) {
-        if (!val) {
-            val = prep_val;
-            mem_reg(prep_addr, &val, OP_WRITE);
+    if (mem_reg(prep_addr, &readed, OP_READ)) {
+        if (readed != prep_val) {
+            mem_reg(prep_addr, &prep_val, OP_WRITE);
             usleep(100000);
         }
     }
 
-    if (mem_reg(read_addr, &val, OP_READ)) {
-        return val & ((1 << temp_bitness) - 1);
+    if (mem_reg(read_addr, &readed, OP_READ)) {
+        return readed & ((1 << temp_bitness) - 1);
     }
     return 0;
 }
+
+// PMC register 68
+#define CV200_PERI_PMC68 0x20270110
+// PMC register 69
+#define CV200_PERI_PMC69 0x20270114
+
+// Tsensor control register
+#define AV200_PERI_PMC68 0x120A0110
+// Tsensor measurement value 0/1 register
+#define AV200_PERI_PMC70 0x120A0118
 
 // T-sensor temperature record register 0
 #define CV300_MISC_CTRL41 0x120300A4
@@ -502,26 +513,43 @@ static uint32_t hisi_reg_temp(uint32_t read_addr, int temp_bitness,
 // Temperature sensor (T-Sensor) control register
 #define AV300_MISC_CTRL45 0x120300B4
 
+// T-Sensor temperature record register 0
+#define EV300_MISC_CTRL47 0x120280BC
+// Temperature sensor (T-Sensor) control register
+#define EV300_MISC_CTRL45 0x120280B4
+
 static float hisi_get_temp() {
     float tempo;
     switch (chip_generation) {
     case HISI_V2:
-        tempo = hisi_reg_temp(0x20270114, 8, 0x20270110, 0x60FA0000);
+        // PERI_PMC69 bit[7:0]
+        tempo =
+            hisi_reg_temp(CV200_PERI_PMC69, 8, CV200_PERI_PMC68, 0x60FA0000);
         tempo = ((tempo * 180) / 256) - 40;
         break;
-    case HISI_V3:
+    case HISI_V3A:
+        // PERI_PMC70 bit[9:0]
         tempo =
-            hisi_reg_temp(CV300_MISC_CTRL41, 16, CV300_MISC_CTRL39, 0x60FA0000);
+            hisi_reg_temp(AV200_PERI_PMC70, 10, AV200_PERI_PMC68, 0x60FA0000);
         tempo = ((tempo - 125) / 806) * 165 - 40;
         break;
-    case HISI_V4:
-        tempo = hisi_reg_temp(0x120280BC, 16, 0x120280B4, 0xC3200000);
-        tempo = ((tempo - 117) / 798) * 165 - 40;
+    case HISI_V3:
+        // MISC_CTRL41 bit[9:0]
+        tempo =
+            hisi_reg_temp(CV300_MISC_CTRL41, 10, CV300_MISC_CTRL39, 0x60FA0000);
+        tempo = ((tempo - 125) / 806) * 165 - 40;
         break;
     case HISI_V4A:
+        // MISC_CTRL47 bit[9:0]
         tempo =
-            hisi_reg_temp(AV300_MISC_CTRL47, 16, AV300_MISC_CTRL45, 0x60FA0000);
+            hisi_reg_temp(AV300_MISC_CTRL47, 10, AV300_MISC_CTRL45, 0x60FA0000);
         tempo = ((tempo - 136) / 793 * 165) - 40;
+        break;
+    case HISI_V4:
+        // MISC_CTRL47 bit[9:0]
+        tempo =
+            hisi_reg_temp(EV300_MISC_CTRL47, 10, EV300_MISC_CTRL45, 0xC3200000);
+        tempo = ((tempo - 117) / 798) * 165 - 40;
         break;
     default:
         return NAN;
@@ -712,6 +740,10 @@ static const char *get_hisi_chip_id(uint32_t family_id, uint8_t scsysid0) {
         // new chip in the line?
         chip_generation = HISI_V4;
         return "7205V210";
+    case 0x72050500:
+        // A new chip that was received in the OpenIPC lab 2023.07.28
+        chip_generation = HISI_V4;
+        return "7205V500";
     default:
         fprintf(stderr, "Got unexpected ID 0x%x for HiSilicon\n", family_id);
         return "unknown";

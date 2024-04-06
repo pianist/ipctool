@@ -1,6 +1,10 @@
 #include "reginfo.h"
 #include "chipid.h"
 #include "hal/hisi/hal_hisi.h"
+#include "hal/ingenic.h"
+#include "hal/ingenic_reginfo.h"
+#include "hal/sstar.h"
+#include "hal/sstar_reginfo.h"
 #include "tools.h"
 
 #include <assert.h>
@@ -11,14 +15,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-
-typedef const struct {
-    uint32_t address;
-    const char *funcs[];
-} muxctrl_reg_t;
-
-#define MUXCTRL(name, addr, ...)                                               \
-    static muxctrl_reg_t name = {addr, {__VA_ARGS__, 0}};
 
 MUXCTRL(CV100_0, 0x200f0000, "GPIO1_0", "SHUTTER_TRIG")
 MUXCTRL(CV100_1, 0x200f0004, "GPIO1_1", "SDIO_CCLK_OUT")
@@ -2200,12 +2196,22 @@ static const muxctrl_reg_t **regs_by_chip() {
         return RCV100regs;
     case HISI_3536D:
         return DV100regs;
+    case INFINITY6:
+    case INFINITY6B:
+        return I6B_regs;
+    case INFINITY6C:
+        return I6C_regs;
+    case INFINITY6E:
+        return I6E_regs;
+    case T31:
+        return T31_regs;
     }
     fprintf(stderr, "Platform is not supported\n");
     exit(EXIT_FAILURE);
 }
 
 static int dump_regs(bool script_mode) {
+    const char *vendor = getchipvendor();
     const muxctrl_reg_t **regs = regs_by_chip();
 
     for (int reg_num = 0; regs[reg_num]; reg_num++) {
@@ -2220,7 +2226,12 @@ static int dump_regs(bool script_mode) {
             continue;
         }
 
-        val &= 0xf;
+        if (strstr(vendor, VENDOR_HISI) || strstr(vendor, VENDOR_GOKE)) {
+            val &= 0xf;
+        } else if (strstr(vendor, VENDOR_SSTAR)) {
+            val &= 0xffff;
+        }
+
         printf("muxctrl_reg%d %#x %#x", reg_num, regs[reg_num]->address, val);
         show_function(regs[reg_num]->funcs, val);
     }

@@ -22,7 +22,7 @@ typedef struct {
 
 static bool gather_anjoy_board(cJSON *j_inner) {
     gather_sstar_board_info(j_inner);
-    return gather_anjoy_board_info();
+    return gather_anjoy_board_info(j_inner);
 }
 
 static const board_vendors_t vendors[] = {
@@ -36,9 +36,7 @@ static const board_vendors_t vendors[] = {
 };
 
 cJSON *detect_board() {
-    cJSON *fake_root = cJSON_CreateObject();
     cJSON *j_inner = cJSON_CreateObject();
-    cJSON_AddItemToObject(fake_root, "board", j_inner);
 
     for (size_t i = 0; i < ARRCNT(vendors); i++) {
         if (vendors[i].detector_fn())
@@ -52,5 +50,5 @@ cJSON *detect_board() {
         ADD_PARAM("possible-IR-cut-GPIO", ircuts);
     }
 
-    return fake_root;
+    return j_inner;
 }

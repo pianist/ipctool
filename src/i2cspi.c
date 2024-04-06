@@ -9,13 +9,15 @@
 
 #define SELECT_WIDE(reg_addr) reg_addr > 0xff ? 2 : 1
 
+int i2c_adapter_nr = 0;
+
 static int prepare_i2c_sensor(unsigned char i2c_addr) {
     if (!getchipname()) {
         puts("Unknown chip");
         exit(EXIT_FAILURE);
     }
 
-    int fd = open_i2c_sensor_fd();
+    int fd = open_i2c_sensor_fd(i2c_adapter_nr);
     if (fd == -1) {
         puts("Device not found");
         exit(EXIT_FAILURE);
@@ -129,7 +131,7 @@ static void hexdump(read_register_t cb, int fd, unsigned char i2c_addr,
 
     size_t size = to_reg_addr - from_reg_addr;
     printf("       0  1  2  3  4  5  6  7   8  9  A  B  C  D  E  F\n");
-    for (size_t i = from_reg_addr; i < to_reg_addr; ++i) {
+    for (size_t i = from_reg_addr; i <= to_reg_addr; ++i) {
         int res = cb(fd, i2c_addr, i, SELECT_WIDE(i), 1);
         if (i % 16 == 0)
             printf("%4.x: ", i);
@@ -139,11 +141,11 @@ static void hexdump(read_register_t cb, int fd, unsigned char i2c_addr,
         } else {
             ascii[i % 16] = '.';
         }
-        if ((i + 1) % 8 == 0 || i + 1 == size) {
+        if ((i + 1) % 8 == 0 || i == size) {
             printf(" ");
             if ((i + 1) % 16 == 0) {
                 printf("|  %s \n", ascii);
-            } else if (i + 1 == size) {
+            } else if (i == size) {
                 ascii[(i + 1) % 16] = '\0';
                 if ((i + 1) % 16 <= 8) {
                     printf(" ");
@@ -173,7 +175,7 @@ static int i2cdump(int argc, char **argv, bool script_mode) {
     int fd = prepare_i2c_sensor(i2c_addr);
 
     if (script_mode) {
-        for (size_t i = from_reg_addr; i < to_reg_addr; ++i)
+        for (size_t i = from_reg_addr; i <= to_reg_addr; ++i)
             printf("ipctool i2cset %#x %#x %#x\n", i2c_addr, i,
                    i2c_read_register(fd, i2c_addr, i, SELECT_WIDE(i), 1));
     } else {
@@ -198,15 +200,17 @@ static int i2cdetect(int argc, char **argv, bool script_mode) {
     unsigned char i2c_addr;
 
     printf("       0  1  2  3  4  5  6  7   8  9  a  b  c  d  e  f\n");
-    for (i2c_addr = 0x0; i2c_addr < 0xff; ++i2c_addr) {
-        int fd = prepare_i2c_sensor(i2c_addr);
+    int fd = prepare_i2c_sensor(0x00);
+    i2c_addr = 0xff;  // will be 0x00 after first increment
+    do {
+        ++i2c_addr;
         int res = i2c_read_register(fd, i2c_addr, 0, SELECT_WIDE(0), 1);
 
         if (i2c_addr % 16 == 0)
             printf("%4.x: ", i2c_addr);
 
         if (res != -1) {
-            printf("%x ", i2c_addr);
+            printf("%02x ", i2c_addr);
         } else {
             printf("xx ");
         }
@@ -217,9 +221,10 @@ static int i2cdetect(int argc, char **argv, bool script_mode) {
                 printf("|  \n");
         }
 
-        close_sensor_fd(fd);
-        hal_cleanup();
-    }
+    } while (i2c_addr != 0xff);
+    
+    close_sensor_fd(fd);
+    hal_cleanup();    
     printf("\n");
 
     return EXIT_SUCCESS;
@@ -238,7 +243,7 @@ static int spidump(int argc, char **argv, bool script_mode) {
     int fd = prepare_spi_sensor();
 
     if (script_mode) {
-        for (size_t i = from_reg_addr; i < to_reg_addr; ++i)
+        for (size_t i = from_reg_addr; i <= to_reg_addr; ++i)
             printf("ipctool spiset %#x %#x\n", i,
                    spi_read_register(fd, 0, i, SELECT_WIDE(i), 1));
     } else {
@@ -254,20 +259,26 @@ static int spidump(int argc, char **argv, bool script_mode) {
 extern void print_usage();
 
 int i2cspi_cmd(int argc, char **argv) {
-    const char *short_options = "s";
+    const char *short_options = "sb:";
     const struct option long_options[] = {
         {"script", no_argument, NULL, 's'},
+        {"bus", 1, NULL, 'b'},
         {NULL, 0, NULL, 0},
     };
     bool script_mode = false;
     int res;
     int option_index;
+    int flags;
 
     while ((res = getopt_long_only(argc, argv, short_options, long_options,
                                    &option_index)) != -1) {
         switch (res) {
         case 's':
             script_mode = true;
+            break;
+        case 'b':
+            flags = strtoul(optarg, NULL, 0);
+            i2c_adapter_nr = flags;
             break;
         case '?':
             print_usage();
@@ -292,6 +303,7 @@ int i2cspi_cmd(int argc, char **argv) {
         else
             return spidump(argc - optind, argv + optind, script_mode);
     } else if (!strcmp(argv[0] + 3, "detect")) {
+        if (i2c_mode)
             return i2cdetect(argc - optind, argv + optind, script_mode);
     }
 

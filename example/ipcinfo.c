@@ -13,7 +13,9 @@
 #include <unistd.h>
 
 #include <ipchw.h>
+#include <hal/common.h>
 
+#include "chipid.h"
 #include "tools.h"
 #include "version.h"
 
@@ -64,6 +66,7 @@ static void print_usage() {
         "  -s, --short-sensor        read sensor model\n"
         "  -F, --flash-type          read flash type (nor, nand)\n"
         "  -t, --temp                read chip temperature (where supported)\n"
+        "  -i, --info                read chip serial (where supported)\n"
         "  -x, --xm-mac              read MAC address (for XM chips)\n"
         "  -S, --streamer            read streamer name\n"
         "  -V, --version             display version\n"
@@ -91,6 +94,20 @@ static void print_chip_temperature() {
         exit(EXIT_FAILURE);
     }
     printf("%.2f\n", temp);
+}
+
+static void print_serial() {
+    char serial[512];
+
+    const char *vendor = getchipvendor();
+    if (strstr(vendor, VENDOR_HISI) || strstr(vendor, VENDOR_GOKE))
+        hisi_ev300_get_die_id(serial, sizeof serial);
+    if (strstr(vendor, VENDOR_SSTAR))
+        sstar_get_die_id(serial, sizeof serial);
+
+    if (!serial)
+        exit(EXIT_FAILURE);
+    puts(serial);
 }
 
 static void print_sensor_long() {
@@ -147,15 +164,8 @@ static void print_streamer() {
     pid_t godpid;
 
     if ((godpid = get_god_pid(NULL, 0)) > 0) {
-        snprintf(sname, sizeof(sname), "/proc/%d/cmdline", godpid);
-        FILE *fp = fopen(sname, "r");
-        if (!fp)
-            exit(EXIT_FAILURE);
-        if (!fgets(sname, sizeof(sname), fp))
-            exit(EXIT_FAILURE);
-        puts(sname);
-
-        fclose(fp);
+        if (get_pid_cmdline(godpid, sname))
+            puts(sname);
     }
 }
 
@@ -184,7 +194,7 @@ static void print_xm_mac() {
 
     while (fgets(dev, sizeof dev, fp)) {
         name[0] = 0;
-        if (sscanf(dev, "mtd%d: %x %x \"%64[^\"]\"", &i, &es, &ee, name)) {
+        if (sscanf(dev, "mtd%d: %x %x \"%64[^\"]\"", &i, &es, &ee, name) && i<=1) {
             if (find_xm_mac(i, es))
                 return;
         }
@@ -195,7 +205,7 @@ static void print_xm_mac() {
 }
 
 int main(int argc, char **argv) {
-    const char *short_options = "cfvhlstFSxV";
+    const char *short_options = "cfvhlstiFSxV";
     const struct option long_options[] = {
         {"chip-name", no_argument, NULL, 'c'},
         {"family", no_argument, NULL, 'f'},
@@ -205,6 +215,7 @@ int main(int argc, char **argv) {
         {"short-sensor", no_argument, NULL, 's'},
         {"flash-type", no_argument, NULL, 'F'},
         {"temp", no_argument, NULL, 't'},
+        {"info", no_argument, NULL, 'i'},
         {"streamer", no_argument, NULL, 'S'},
         {"xm-mac", no_argument, NULL, 'x'},
         {"version", no_argument, NULL, 'V'},
@@ -235,6 +246,9 @@ int main(int argc, char **argv) {
             break;
         case 't':
             print_chip_temperature();
+            break;
+        case 'i':
+            print_serial();
             break;
         case 'v':
             print_vendor();

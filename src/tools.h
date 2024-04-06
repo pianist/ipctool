@@ -11,30 +11,29 @@
 #define ARRCNT(a) (sizeof(a) / sizeof((a)[0]))
 
 #define ADD_PARAM(param, val)                                                  \
-    {                                                                          \
+    do {                                                                       \
         cJSON *strval = cJSON_CreateString(val);                               \
         cJSON_AddItemToObject(j_inner, param, strval);                         \
-    }
+    } while (0)
 
 #define ADD_PARAM_NOTNULL(param, val)                                          \
-    {                                                                          \
-        if (val != NULL) {                                                     \
+    do {                                                                       \
+        if (val != NULL)                                                       \
             ADD_PARAM(param, val);                                             \
-        }                                                                      \
-    }
+    } while (0)
 
 #define ADD_PARAM_NUM(param, num)                                              \
-    {                                                                          \
+    do {                                                                       \
         cJSON *numval = cJSON_CreateNumber(num);                               \
         cJSON_AddItemToObject(j_inner, param, numval);                         \
-    }
+    } while (0)
 
 #define ADD_PARAM_FMT(param, fmt, ...)                                         \
-    {                                                                          \
+    do {                                                                       \
         char val[1024];                                                        \
         snprintf(val, sizeof(val), fmt, __VA_ARGS__);                          \
         ADD_PARAM(param, val);                                                 \
-    }
+    } while (0)
 #define MIN(X, Y) (((X) < (Y)) ? (X) : (Y))
 #define MAX(X, Y) (((X) > (Y)) ? (X) : (Y))
 
@@ -56,6 +55,7 @@ void restore_printk();
 void disable_printk();
 uint32_t ceil_up(uint32_t n, uint32_t offset);
 pid_t get_god_pid(char *shortname, size_t shortsz);
+bool get_pid_cmdline(pid_t godpid, char *cmdname);
 
 // avoid warnings for old compilers
 #if __GNUC__ < 7

@@ -21,15 +21,8 @@ static void get_god_app(cJSON *j_inner) {
     pid_t godpid;
 
     if ((godpid = get_god_pid(NULL, 0)) > 0) {
-        snprintf(sname, sizeof(sname), "/proc/%d/cmdline", godpid);
-        FILE *fp = fopen(sname, "r");
-        if (!fp)
-            return;
-        if (!fgets(sname, sizeof(sname), fp))
-            return;
-        ADD_PARAM("main-app", sname);
-
-        fclose(fp);
+        if (get_pid_cmdline(godpid, sname))
+            ADD_PARAM("main-app", sname);
     }
 }
 
@@ -38,7 +31,7 @@ static void get_kernel_version(cJSON *j_inner) {
     if (!fp)
         return;
 
-    char line[1024];
+    char line[1020];
     if (!fgets(line, sizeof(line), fp))
         return;
     fclose(fp);
@@ -112,9 +105,7 @@ static void get_libc(cJSON *j_inner) {
 }
 
 cJSON *detect_firmare() {
-    cJSON *fake_root = cJSON_CreateObject();
     cJSON *j_inner = cJSON_CreateObject();
-    cJSON_AddItemToObject(fake_root, "firmware", j_inner);
 
     const char *uver = uboot_env_get_param("ver");
     if (uver) {
@@ -130,5 +121,5 @@ cJSON *detect_firmare() {
         hal_firmware_props(j_inner);
     get_god_app(j_inner);
 
-    return fake_root;
+    return j_inner;
 }

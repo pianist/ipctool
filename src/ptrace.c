@@ -73,7 +73,7 @@ typedef struct {
 
 static const char *arc_cstr(arc_str_t *file) {
     if (!file)
-        return NULL;
+        return "NULL";
 
     return file->str;
 }
@@ -102,15 +102,15 @@ typedef struct process {
 HashTable pids;
 
 static void dump_regs(struct user const *regs, FILE *outfp) {
-    fprintf(outfp, "r0   = 0x%08x, r1 = 0x%08x\n", regs->regs.uregs[0],
+    fprintf(outfp, "r0   = 0x%08lx, r1 = 0x%08lx\n", regs->regs.uregs[0],
             regs->regs.uregs[1]);
-    fprintf(outfp, "r2   = 0x%08x, r3 = 0x%08x\n", regs->regs.uregs[2],
+    fprintf(outfp, "r2   = 0x%08lx, r3 = 0x%08lx\n", regs->regs.uregs[2],
             regs->regs.uregs[3]);
-    fprintf(outfp, "r4   = 0x%08x, r5 = 0x%08x\n", regs->regs.uregs[4],
+    fprintf(outfp, "r4   = 0x%08lx, r5 = 0x%08lx\n", regs->regs.uregs[4],
             regs->regs.uregs[5]);
-    fprintf(outfp, "r6   = 0x%08x, r7 = 0x%08x\n", regs->regs.uregs[6],
+    fprintf(outfp, "r6   = 0x%08lx, r7 = 0x%08lx\n", regs->regs.uregs[6],
             regs->regs.uregs[7]);
-    fprintf(outfp, "r8   = 0x%08x, r9 = 0x%08x\n", regs->regs.uregs[8],
+    fprintf(outfp, "r8   = 0x%08lx, r9 = 0x%08lx\n", regs->regs.uregs[8],
             regs->regs.uregs[9]);
 }
 
@@ -453,6 +453,16 @@ static void dump_hisi_read_mipi(pid_t child, unsigned int cmd,
     hisi_dump_combo_dev_attr(buf, cmd);
 }
 
+static void dump_hisi_vi_dev_attr(pid_t child, unsigned int cmd,
+                                size_t remote_addr) {
+    size_t stsize = hisi_sizeof_vi_dev_attr();
+    char *buf = alloca(stsize);
+    if (!copy_from_process(child, remote_addr, buf, stsize))
+        return;
+
+    hisi_dump_vi_dev_attr(buf, cmd);
+}
+
 static void hisi_mipi_ioctl_exit_cb(process_t *proc, int fd, unsigned int cmd,
                                     size_t arg, ssize_t sysret) {
     switch (cmd) {
@@ -471,14 +481,29 @@ static void hisi_mipi_ioctl_exit_cb(process_t *proc, int fd, unsigned int cmd,
     case HIV4_MIPI_SET_DEV_ATTR:
         dump_hisi_read_mipi(proc->pid, cmd, arg);
         break;
+    case HIV4_VI_SET_DEV_ATTR:
+        dump_hisi_vi_dev_attr(proc->pid, cmd, arg);
+        break;
     default:
         printf("ERR: uknown cmd %#x for himipi\n", cmd);
+    }
+}
+
+static void hisi_vi_ioctl_exit_cb(process_t *proc, int fd, unsigned int cmd,
+                                    size_t arg, ssize_t sysret) {
+    switch (cmd) {
+    case HIV4_VI_SET_DEV_ATTR:
+        dump_hisi_vi_dev_attr(proc->pid, cmd, arg);
+        break;
+    default:
+        break;
     }
 }
 
 static void hisi_gen2_read_exit_cb(process_t *proc, int fd, size_t remote_addr,
                                    size_t nbyte, ssize_t sysret) {
     unsigned char *buf = alloca(nbyte);
+    memset(&buf, 0, sizeof(nbyte));
     copy_from_process(proc->pid, remote_addr, buf, nbyte);
     // reg_width
     if (nbyte == 2) {
@@ -875,6 +900,8 @@ static void syscall_open(process_t *proc, int fd, int offset) {
     } else if (!strcmp(filename, "/dev/hi_mipi") ||
                !strcmp(filename, "/dev/mipi")) {
         proc->fds[fd].ioctl_exit = hisi_mipi_ioctl_exit_cb;
+    } else if (!strcmp(filename, "/dev/vi")) {
+        proc->fds[fd].ioctl_exit = hisi_vi_ioctl_exit_cb;
     }
 }
 
